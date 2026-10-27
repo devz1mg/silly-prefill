@@ -4,8 +4,8 @@
     "js": "index.js",
     "css": "style.css",
     "author": "devz1mg",
-    "version": "1.6.2",
-    "homePage": "https://github.com/devz1mg/silly-prefill",
+    "version": "1.7.1",
+    "homePage": "",
     "auto_update": false,
     "minimum_client_version": "1.19.0"
 }

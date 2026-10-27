@@ -357,18 +357,31 @@ export function buildBlockRequest(block, run) {
         if (apiMap.selected !== 'openai') throw new Error('Function prefill needs a Chat Completion profile.');
         const id = `sp_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
         const call = { id, type: 'function', function: { name: api.TOOL_NAME, arguments: JSON.stringify({ mode: 'assistant_prefill' }) } };
-        if (OPENAI_COMPAT_SOURCES.has(source)) {
-            call.extra_content = { google: { thought_signature: 'skip_thought_signature_validator' } };
-        } else {
-            call.signature = 'skip_thought_signature_validator';
+        const settings = api.getSettings();
+        const gptTarget = api.isGptModel?.(profile.model) === true;
+        if (gptTarget && !settings.enableGpt) throw new Error('GPT function-prefill is disabled.');
+        const geminiTarget = source === 'makersuite' || source === 'vertexai' || api.isGeminiModel(profile.model);
+        const token = geminiTarget && settings.thoughtSignatureMode === 'argon-exp-proto-v2'
+            ? api.resolveGeminiThoughtSignature({ model: profile.model, chat_completion_source: source }, settings).signature
+            : 'skip_thought_signature_validator';
+        if (!gptTarget && OPENAI_COMPAT_SOURCES.has(source)) {
+            if (token) call.extra_content = { google: { thought_signature: token } };
+        } else if (!gptTarget) {
+            if (token) call.signature = token;
+        }
+        const assistant = { role: 'assistant', content: '', tool_calls: [call] };
+        if (gptTarget) {
+            const info = api.resolveGptThoughtSignature({ model: profile.model, chat_completion_source: source }, settings);
+            if (info.signature) assistant.reasoning_details = [{ type: 'reasoning.encrypted', id: `rs_${id}`,
+                data: info.signature, format: 'openai-responses-v1', index: 0 }];
         }
         messages.push(
-            { role: 'assistant', content: '', tool_calls: [call] },
-            { role: 'tool', ...(source === 'claude' ? {} : { name: api.TOOL_NAME }), tool_call_id: id, content: prefillText },
+            assistant,
+            { role: 'tool', ...(source === 'claude' || gptTarget ? {} : { name: api.TOOL_NAME }), tool_call_id: id, content: prefillText },
         );
-        const settings = api.getSettings();
-        const geminiTarget = source === 'makersuite' || source === 'vertexai' || api.isGeminiModel(profile.model);
-        if (source !== 'claude' && geminiTarget) {
+        if (gptTarget) {
+            if (settings.enableGptToolDeclaration) api.registerPrefillTool(overridePayload, settings.geminiToolDescription, true);
+        } else if (source !== 'claude' && geminiTarget) {
             if (settings.enableGeminiToolDeclaration) {
                 api.registerPrefillTool(overridePayload, settings.geminiToolDescription, false, settings.geminiFunctionCallingMode, settings.geminiAllowedFunctionNames);
             }
@@ -824,8 +837,8 @@ function renderBlockEditor(block) {
 
     if (block.mode !== BLOCK_MODES.SILENT) {
         const history = select({
-            result: 'В историю — результат',
-            original: 'В историю — только оригинал',
+            result: block.mode === BLOCK_MODES.REWRITE ? 'Переписать текст и историю модели' : 'В историю — результат',
+            original: 'Только визуально — в историю только оригинал',
         }, block.historyMode, v => update('historyMode', v));
         history.id = 'sp_chain_history_mode';
         wrap.append(field('Chat history / История чата', history,

@@ -1,6 +1,6 @@
 // Silly Prefill — SillyTavern extension.
 // 1. Wraps an assistant prefill in a synthetic function response so Gemini
-//    (and optionally Claude) continues from it instead of returning empty/400.
+//    GPT and optionally Claude can continue from it; endpoint acceptance varies.
 // 2. Additional Parameters for every Chat Completion source (needs the
 //    companion server plugin "silly-prefill-params").
 
@@ -33,6 +33,8 @@ const THOUGHT_SIGNATURE_MODES = Object.freeze({
     SKIP_VALIDATOR: 'skip_validator',
     CONTEXT_ENGINEERING: 'context_engineering',
     PROTOBUF: 'protobuf',
+    ARGON_PROTO_V2: 'argon-exp-proto-v2',
+    GPT_FERNET: 'gpt_fernet',
     CUSTOM: 'custom',
 });
 
@@ -48,6 +50,10 @@ const DEFAULT_SETTINGS = Object.freeze({
     preFunctionMessageRole: 'assistant',
     mergePreFunctionAssistant: false,
     geminiOnly: true,
+    enableGpt: true,
+    gptAttachReasoningSignature: false,
+    enableGptToolDeclaration: false,
+    normalizeGptSampling: false,
     useOpenAIProxyTransport: false,
     enableGeminiToolDeclaration: true,
     geminiToolDescription: DEFAULT_GEMINI_TOOL_DESCRIPTION,
@@ -190,6 +196,24 @@ function isClaudeModel(model) {
     return String(model ?? '').toLowerCase().includes('claude');
 }
 
+function isGptModel(model) {
+    return /\b(?:gpt-|chatgpt-|o[134](?:\b|-))|astra\b|6(?:\.1|-1)?-(?:sol|luna)\b/i.test(String(model ?? ''));
+}
+
+/** Optional proxy-compatibility policy, never inferred from absent/auto effort. */
+function normalizeGptParameters(generateData, model) {
+    if (!/gpt-6|astra\b|6(?:\.1|-1)?-(?:sol|luna)\b|gpt-5[.-][4-9]/i.test(model)
+        || !['low', 'medium', 'high', 'max', 'xhigh'].includes(String(generateData.reasoning_effort ?? '').toLowerCase())) return [];
+    const removed = [];
+    for (const key of ['temperature', 'top_p', 'top_k', 'frequency_penalty', 'presence_penalty', 'logprobs', 'top_logprobs']) {
+        if (Object.hasOwn(generateData, key)) {
+            delete generateData[key];
+            removed.push(key);
+        }
+    }
+    return removed;
+}
+
 function getGenerationType(generateData) {
     return String(generateData?.type ?? 'normal');
 }
@@ -234,7 +258,7 @@ function bytesToBase64(bytes) {
  * Builds a structurally valid Gemini thoughtSignature protobuf blob:
  * Outer field 2 (wire type 2: 0x12) -> Inner field 1 (wire type 2: 0x0a)
  * -> Tink AEAD prefix (0x01 + 4-byte key ID) + 300-byte deterministic payload.
- * Passes proxy length (>= 50 chars), base64, and protobuf wire-format checks.
+ * Experimental framing only; provider/proxy acceptance is not established.
  */
 function buildSyntheticProtobufThoughtSignature(seedText = '') {
     const payloadLength = 305; // 1 (version) + 4 (keyId) + 300 (ciphertext+tag)
@@ -278,6 +302,28 @@ function buildSyntheticProtobufThoughtSignature(seedText = '') {
     return bytesToBase64(fullBytes);
 }
 
+/** Experimental 91-byte framing from Kuro; not a Google signature. */
+function buildArgonExperimentalProtobufV2(seedText = '') {
+    const payload = new Uint8Array(87);
+    payload.set([0x01, 0x69, 0x14, 0x7d, 0x13]);
+    let state = 0x811c9dc5;
+    const seed = `gemini_thought_sig:kuro_prefill:${seedText}`;
+    for (let i = 0; i < seed.length; i++) {
+        state = Math.imul(state ^ seed.charCodeAt(i), 0x01000193) >>> 0;
+    }
+    if (!state) state = 0x6d2b79f5;
+    for (let i = 5; i < payload.length; i++) {
+        state ^= state << 13;
+        state ^= state >>> 17;
+        state ^= state << 5;
+        payload[i] = (state >>> 0) & 0xff;
+    }
+    const bytes = new Uint8Array(91);
+    bytes.set([0x12, 0x59, 0x0a, 0x57]);
+    bytes.set(payload, 4);
+    return bytesToBase64(bytes);
+}
+
 /** Local experimental format from Kuro; not a provider-signed signature. */
 function buildExperimentalShortToken() {
     if (typeof globalThis.crypto?.getRandomValues !== 'function') {
@@ -287,6 +333,54 @@ function buildExperimentalShortToken() {
     globalThis.crypto.getRandomValues(bytes);
     bytes.set([0x01, 0x8f, 0x3d, 0x6b, 0x5f], 0);
     return bytesToBase64(bytes);
+}
+
+/** Fernet-shaped only; this does not validate authenticity. */
+function isGptFernetSignature(sig) {
+    return typeof sig === 'string' && sig.trim().startsWith('gAAAAAB') && sig.trim().length >= 60;
+}
+
+/** Local experimental framing: no AES/HMAC, not provider encrypted reasoning. */
+function buildSyntheticGptFernetSignature() {
+    if (typeof globalThis.crypto?.getRandomValues !== 'function') {
+        throw new Error('Secure random generation is unavailable in this browser.');
+    }
+    const bytes = new Uint8Array(313);
+    globalThis.crypto.getRandomValues(bytes);
+    bytes[0] = 0x80;
+    let timestamp = BigInt(Math.floor(Date.now() / 1000));
+    for (let i = 8; i >= 1; i--) {
+        bytes[i] = Number(timestamp & 255n);
+        timestamp >>= 8n;
+    }
+    return bytesToBase64(bytes).replace(/\+/g, '-').replace(/\//g, '_');
+}
+
+function resolveGptThoughtSignature(generateData, settings) {
+    if (!settings.gptAttachReasoningSignature) return { signature: null, source: 'gpt-sig-disabled' };
+    const mode = settings.thoughtSignatureMode;
+    if (mode === THOUGHT_SIGNATURE_MODES.GPT_FERNET) {
+        return { signature: buildSyntheticGptFernetSignature(), source: 'synthetic-gpt-fernet-experimental' };
+    }
+    if (![THOUGHT_SIGNATURE_MODES.AUTO, THOUGHT_SIGNATURE_MODES.CUSTOM].includes(mode)) {
+        return { signature: null, source: 'gpt-incompatible-signature-mode' };
+    }
+    const model = String(generateData.model ?? '');
+    const source = String(generateData.chat_completion_source ?? '');
+    const provenance = signatureProvenance(model, source);
+    const matches = record => record && record.model === model && record.source === source
+        && record.transport === provenance.transport && isGptFernetSignature(record.signature);
+    const custom = String(settings.customThoughtSignature ?? '').trim();
+    const customProvenance = settings.customThoughtSignatureProvenance;
+    if (isGptFernetSignature(custom) && (!customProvenance || (matches(customProvenance) && customProvenance.signature === custom))) {
+        return { signature: custom, source: 'experimental-gpt-custom' };
+    }
+    if (mode === THOUGHT_SIGNATURE_MODES.CUSTOM) return { signature: null, source: 'gpt-custom-unavailable' };
+    const harvested = extractRealSignatureRecordFromChat(model, null, source, true);
+    if (matches(harvested)) cacheModelSignature(model, harvested.signature, source);
+    const cached = settings.cachedThoughtSignatures?.[signatureCacheKey(provenance)];
+    const record = matches(harvested) ? harvested : matches(cached) ? cached : null;
+    return { signature: record?.signature ?? null, source: record ? 'experimental-gpt-transplant' : 'gpt-no-signature' };
 }
 
 function isRealLookingSignature(sig) {
@@ -362,7 +456,7 @@ function extractRealSignatureFromMessages(messages) {
     return null;
 }
 
-function extractRealSignatureRecordFromChat(targetModel = '', messageId = null, targetSource = '') {
+function extractRealSignatureRecordFromChat(targetModel = '', messageId = null, targetSource = '', forGpt = false) {
     const chat = SillyTavern.getContext()?.chat;
     if (!Array.isArray(chat)) {
         return null;
@@ -382,7 +476,7 @@ function extractRealSignatureRecordFromChat(targetModel = '', messageId = null, 
 
         const mesModel = String(extra.model ?? '').trim();
         const source = String(extra.sp_signature_provenance?.source ?? extra.api ?? '').trim();
-        if (!isGeminiModel(mesModel) || !source
+        if (!(forGpt ? isGptModel(mesModel) : isGeminiModel(mesModel)) || !source
             || (normalizedTarget && mesModel !== normalizedTarget)
             || (targetSource && source !== targetSource)) continue;
 
@@ -403,7 +497,7 @@ function extractRealSignatureRecordFromChat(targetModel = '', messageId = null, 
             candidate = extra.reasoning_signature.trim();
         }
 
-        if (candidate) {
+        if (candidate && (forGpt ? isGptFernetSignature(candidate) : !isGptFernetSignature(candidate))) {
             return { signature: candidate, ...signatureProvenance(mesModel, source), origin: 'chat' };
         }
     }
@@ -442,10 +536,14 @@ function resolveGeminiThoughtSignature(generateData, settings) {
     if (!settings.useThoughtSignature) {
         return { signature: null, source: 'disabled' };
     }
+    if (settings.thoughtSignatureMode === THOUGHT_SIGNATURE_MODES.GPT_FERNET) {
+        return { signature: null, source: 'gemini-incompatible-signature-mode' };
+    }
 
     const model = String(generateData?.model ?? '').trim();
     const mode = String(settings.thoughtSignatureMode ?? THOUGHT_SIGNATURE_MODES.AUTO);
     let customSig = String(settings.customThoughtSignature ?? '').trim();
+    if (isGptFernetSignature(customSig)) customSig = '';
 
     const source = String(generateData?.chat_completion_source ?? '');
     const customProvenance = settings.customThoughtSignatureProvenance;
@@ -475,6 +573,9 @@ function resolveGeminiThoughtSignature(generateData, settings) {
 
         case THOUGHT_SIGNATURE_MODES.CONTEXT_ENGINEERING:
             return { signature: CONTEXT_ENGINEERING_SENTINEL, source: 'context-engineering' };
+
+        case THOUGHT_SIGNATURE_MODES.ARGON_PROTO_V2:
+            return { signature: buildArgonExperimentalProtobufV2(model), source: THOUGHT_SIGNATURE_MODES.ARGON_PROTO_V2 };
 
         case THOUGHT_SIGNATURE_MODES.PROTOBUF:
             return {
@@ -749,6 +850,10 @@ function injectFunctionResponsePrefill(generateData, rawSettings, resolvedPrefil
     }
 
     const claudeTarget = isClaudeModel(model);
+    const gptTarget = !claudeTarget && isGptModel(model);
+    if (gptTarget && !settings.enableGpt) {
+        return { injected: false, reason: 'gpt-disabled', model, type };
+    }
     if (claudeTarget && !settings.enableClaude) {
         return { injected: false, reason: 'claude-disabled', model, type };
     }
@@ -757,7 +862,7 @@ function injectFunctionResponsePrefill(generateData, rawSettings, resolvedPrefil
         return { injected: false, reason: 'claude-native-source-required', model, type };
     }
 
-    if (settings.geminiOnly && !isGeminiModel(model) && !claudeTarget) {
+    if (settings.geminiOnly && !isGeminiModel(model) && !claudeTarget && !gptTarget) {
         return { injected: false, reason: 'not-gemini', model, type };
     }
 
@@ -839,9 +944,9 @@ function injectFunctionResponsePrefill(generateData, rawSettings, resolvedPrefil
         settings.useOpenAIProxyTransport,
     );
     // Resolve only after routing: UI source is not necessarily wire provenance.
-    const thoughtSignatureInfo = !claudeTarget
-        ? resolveGeminiThoughtSignature(generateData, settings)
-        : { signature: null, source: 'not-applicable' };
+    const thoughtSignatureInfo = gptTarget ? resolveGptThoughtSignature(generateData, settings)
+        : !claudeTarget ? resolveGeminiThoughtSignature(generateData, settings)
+            : { signature: null, source: 'not-applicable' };
     if (transport.routed && settings.additionalParamsEnabled) {
         // Rebuild for the final wire source, not the original native UI source.
         handleChatCompletionSettingsReadyForParams(generateData);
@@ -870,7 +975,7 @@ function injectFunctionResponsePrefill(generateData, rawSettings, resolvedPrefil
         },
     };
 
-    if (thoughtSignatureInfo.signature) {
+    if (!gptTarget && thoughtSignatureInfo.signature) {
         if (isOpenAICompatTransport) {
             // Official Gemini OpenAI-compatibility format; ST forwards these
             // messages to the upstream as-is.
@@ -884,15 +989,20 @@ function injectFunctionResponsePrefill(generateData, rawSettings, resolvedPrefil
         }
     }
 
+    const syntheticAssistant = {
+        role: 'assistant',
+        content: mergePreFunctionMessage ? preFunctionMessage : '',
+        tool_calls: [syntheticToolCall],
+    };
+    if (gptTarget && thoughtSignatureInfo.signature) {
+        syntheticAssistant.reasoning_details = [{ type: 'reasoning.encrypted', id: `rs_${callId}`,
+            data: thoughtSignatureInfo.signature, format: 'openai-responses-v1', index: 0 }];
+    }
     generateData.messages.push(
-        {
-            role: 'assistant',
-            content: mergePreFunctionMessage ? preFunctionMessage : '',
-            tool_calls: [syntheticToolCall],
-        },
+        syntheticAssistant,
         {
             role: 'tool',
-            ...(claudeTarget ? {} : { name: TOOL_NAME }),
+            ...(claudeTarget || gptTarget ? {} : { name: TOOL_NAME }),
             tool_call_id: callId,
             content: prefill,
         },
@@ -901,6 +1011,10 @@ function injectFunctionResponsePrefill(generateData, rawSettings, resolvedPrefil
     const geminiTool = !claudeTarget && isGeminiModel(model) && settings.enableGeminiToolDeclaration
         ? registerPrefillTool(generateData, settings.geminiToolDescription, false, settings.geminiFunctionCallingMode, settings.geminiAllowedFunctionNames)
         : { registered: false };
+    const gptTool = gptTarget && settings.enableGptToolDeclaration
+        ? registerPrefillTool(generateData, settings.geminiToolDescription, true)
+        : { registered: false };
+    if (gptTarget) gptTool.removedParameters = settings.normalizeGptSampling ? normalizeGptParameters(generateData, model) : [];
     const claudeTool = claudeTarget
         ? registerPrefillTool(generateData, settings.claudeToolDescription)
         : { registered: false };
@@ -933,6 +1047,7 @@ function injectFunctionResponsePrefill(generateData, rawSettings, resolvedPrefil
         nativePrefillRemoved,
         trailingPrefillRemoved,
         geminiTool,
+        gptTool,
         claudeTool,
         thoughtSignature: thoughtSignatureInfo,
         transport,
@@ -1060,7 +1175,14 @@ async function fetchRealGeminiThoughtSignature(signal = null) {
             : buildPrefillToolDeclaration(settings.geminiToolDescription, false)],
         tool_choice: 'auto',
     };
-    routeNativeGeminiProxyThroughOpenAI(body, settings.useOpenAIProxyTransport);
+    if (isGptModel(model)) {
+        body.messages = [{ role: 'user', content: 'Reply with OK.' }];
+        delete body.tools;
+        delete body.tool_choice;
+        if (settings.normalizeGptSampling) normalizeGptParameters(body, model);
+    } else {
+        routeNativeGeminiProxyThroughOpenAI(body, settings.useOpenAIProxyTransport);
+    }
     applyAdditionalParams(body);
 
     // Official helper for one-off requests; returns raw JSON with extractData=false.
@@ -1386,7 +1508,7 @@ function updatePreFunctionMessageUi() {
 
 function updateThoughtSignatureUi() {
     const settings = getSettings();
-    const enabled = Boolean(settings.useThoughtSignature);
+    const enabled = Boolean(settings.useThoughtSignature || (settings.enableGpt && settings.gptAttachReasoningSignature));
     const modeSelect = document.getElementById('sp_thought_signature_mode');
     const customBox = document.getElementById('sp_custom_thought_signature');
     const counter = document.getElementById('sp_custom_thought_signature_count');
@@ -1421,12 +1543,12 @@ function updateGeminiToolDeclarationUi() {
     if (names) names.disabled = !enabled || !['any', 'validated'].includes(getSettings().geminiFunctionCallingMode);
     const field = document.getElementById('sp_gemini_tool_description');
     if (field instanceof HTMLTextAreaElement) {
-        field.disabled = !enabled;
+        field.disabled = !(enabled || (getSettings().enableGpt && getSettings().enableGptToolDeclaration));
         const count = document.getElementById('sp_gemini_tool_description_count');
         if (count) count.textContent = `${field.value.length} chars`;
     }
     const reset = document.getElementById('sp_reset_gemini_description');
-    if (reset) reset.disabled = !enabled;
+    if (reset) reset.disabled = !(enabled || (getSettings().enableGpt && getSettings().enableGptToolDeclaration));
     updateSillyPrefillEditorButtons();
 }
 
@@ -1578,8 +1700,8 @@ function buildSillyPrefillMarkup() {
                         ${section('Connection &amp; model support', `
                             ${toggle(
                                 'sp_gemini_only',
-                                'Gemini models only',
-                                'Apply prefill only to Gemini models. Experimental Claude support is controlled separately below.',
+                                'Supported model families only',
+                                'Apply to Gemini and enabled GPT/Claude families. GPT and Claude controls are separate.',
                             )}
                             ${toggle(
                                 'sp_use_openai_proxy_transport',
@@ -1607,8 +1729,12 @@ function buildSillyPrefillMarkup() {
                                 <textarea id="sp_gemini_allowed_function_names" class="text_pole" rows="2" aria-describedby="sp_gemini_allowed_function_names_help"></textarea>
                                 <small id="sp_gemini_allowed_function_names_help">One exact declared name per line, case-sensitive; no spaces. Empty means all declared functions. Unknown or invalid names reject the request. Blocks normally declare only silly_prefill. Explicit named tool choice takes priority.</small>
                             </div>
+                            ${toggle('sp_enable_gpt', 'Enable GPT function-prefill', 'Experimental GPT/Astra/Sol/Luna/o-model support. Does not update core model capabilities or the tokenizer.')}
+                            ${toggle('sp_gpt_attach_reasoning_signature', 'Attach GPT encrypted reasoning (experimental)', 'OFF by default. AUTO uses matching saved/custom tokens only; no synthetic fallback. Transplant is unverified.')}
+                            ${toggle('sp_enable_gpt_tool_declaration', 'Declare prefill tool for GPT (optional)', 'OFF by default. Keep disabled if your endpoint rejects tools. Does not change Gemini function calling mode.')}
+                            ${toggle('sp_normalize_gpt_sampling', 'Normalize GPT sampling (optional)', 'OFF by default. Strip sampling/penalty fields for selected GPT reasoning families only with an explicit active reasoning effort; proxy behavior may differ.')}
                             <div class="sp-ui-field">
-                                ${editorHeading('sp_gemini_tool_description', 'Prefill tool description')}
+                                ${editorHeading('sp_gemini_tool_description', 'Gemini / GPT prefill tool description')}
                                 <textarea id="sp_gemini_tool_description" class="text_pole"
                                     rows="5" spellcheck="false"></textarea>
                                 <div class="sp-ui-footer">
@@ -1659,6 +1785,8 @@ function buildSillyPrefillMarkup() {
                                     <option value="skip_validator">Skip-validator token</option>
                                     <option value="context_engineering">Context-engineering token</option>
                                     <option value="protobuf">Synthetic protobuf signature</option>
+                                    <option value="argon-exp-proto-v2">argon-exp-proto-v2 (experimental, 91 bytes; not provider-signed)</option>
+                                    <option value="gpt_fernet">GPT Fernet-shaped token (experimental, NOT provider-signed)</option>
                                     <option value="custom">Custom / fetched signature</option>
                                 </select>
                                 <small id="sp_signature_mode_help"></small>
@@ -1676,6 +1804,8 @@ function buildSillyPrefillMarkup() {
                                         class="menu_button" value="Fetch real signature">
                                     <input id="sp_generate_protobuf_signature" type="button"
                                         class="menu_button" value="Generate protobuf">
+                                    <input id="sp_generate_argon_proto_v2" type="button" class="menu_button" value="Generate argon-exp-proto-v2 (experimental)">
+                                    <input id="sp_generate_gpt_signature" type="button" class="menu_button" value="Generate GPT token (experimental)">
                                     <input id="sp_generate_short_token" type="button"
                                         class="menu_button" value="Generate short token (experimental)"
                                         title="85 random bytes, not a provider-signed signature. Acceptance is unverified. Updates the Custom field; does not change the selected mode.">
@@ -1930,18 +2060,20 @@ function updateSillyPrefillEditorButtons() {
 
 function updateSignatureModeHelp(settings) {
     const descriptions = {
-        auto: 'Experimental: manual custom token first, then fetched/chat/cache tokens with matching model and source/transport; otherwise skip_thought_signature_validator. Transplanting a token does not restore valid reasoning state.',
+        auto: 'Experimental: matching custom/chat/cache tokens. Gemini fallback: skip-validator; GPT fallback: no token, never synthetic. GPT attachment needs its separate opt-in. Transplant does not establish valid reasoning state.',
         real_or_protobuf: 'Experimental: manual custom token first, then matching-provenance tokens; otherwise synthetic protobuf. Neither transplanted nor generated tokens establish valid reasoning state.',
         skip_validator: 'Sends skip_thought_signature_validator. Acceptance depends on the provider.',
         context_engineering: 'Sends context_engineering_is_the_way_to_go. Acceptance depends on the provider.',
         protobuf: 'Generates a synthetic protobuf-shaped signature. It is not provider-signed; acceptance depends on the provider.',
+        'argon-exp-proto-v2': 'Experimental Kuro-compatible 91-byte protobuf framing (ElkKVwFpFH0T...). Not Google-signed, not decoded thoughts; Argon/proxy acceptance unverified. Old protobuf is unchanged.',
+        gpt_fernet: 'EXPERIMENTAL GPT-only 313-byte Fernet-shaped token. No AES/HMAC and no provider signature. Requires Attach GPT encrypted reasoning; may be rejected. Does not switch the API to Responses.',
         custom: 'Experimental custom token. Fetched values require matching model/source/transport; manual values are unverified. If unavailable, sends skip_thought_signature_validator.',
     };
 
     const help = document.getElementById('sp_signature_mode_help');
     if (help) {
         const text = descriptions[settings.thoughtSignatureMode] ?? descriptions.auto;
-        help.textContent = settings.useThoughtSignature
+        help.textContent = (settings.useThoughtSignature || (settings.enableGpt && settings.gptAttachReasoningSignature))
             ? text
             : `Signature attachment is off. ${text}`;
     }
@@ -2143,6 +2275,10 @@ async function renderSettings() {
 
         bindCheckbox('sp_gemini_only', 'geminiOnly');
         bindCheckbox('sp_use_openai_proxy_transport', 'useOpenAIProxyTransport');
+        bindCheckbox('sp_enable_gpt', 'enableGpt', () => { updateThoughtSignatureUi(); updateGeminiToolDeclarationUi(); });
+        bindCheckbox('sp_gpt_attach_reasoning_signature', 'gptAttachReasoningSignature', updateThoughtSignatureUi);
+        bindCheckbox('sp_enable_gpt_tool_declaration', 'enableGptToolDeclaration', updateGeminiToolDeclarationUi);
+        bindCheckbox('sp_normalize_gpt_sampling', 'normalizeGptSampling');
         bindCheckbox('sp_enable_gemini_tool_declaration', 'enableGeminiToolDeclaration', updateGeminiToolDeclarationUi);
         const geminiFunctionMode = document.getElementById('sp_gemini_function_calling_mode');
         if (geminiFunctionMode instanceof HTMLSelectElement) {
@@ -2247,7 +2383,7 @@ async function renderSettings() {
             activeSignatureFetch = operation;
             const button = document.getElementById('sp_fetch_thought_signature');
             if (button) button.disabled = true;
-            setStatus('idle', 'Fetching real thoughtSignature from Gemini...');
+            setStatus('idle', 'Fetching provider token from the active model (may incur charges)...');
             try {
                 const { signature, model, source, thinking } = await fetchRealGeminiThoughtSignature(operation.controller.signal);
                 if (operation.revision !== signatureRevision) return;
@@ -2287,6 +2423,26 @@ async function renderSettings() {
                 }
             }
         });
+
+        for (const [id, generator, label] of [
+            ['sp_generate_argon_proto_v2', buildArgonExperimentalProtobufV2, 'argon-exp-proto-v2'],
+            ['sp_generate_gpt_signature', buildSyntheticGptFernetSignature, 'GPT Fernet-shaped token'],
+        ]) {
+            document.getElementById(id)?.addEventListener('click', () => {
+                invalidateSignatureFetch();
+                try {
+                    const sig = generator(String(Date.now()));
+                    getSettings().customThoughtSignature = sig;
+                    getSettings().customThoughtSignatureProvenance = null;
+                    if (customThoughtSig instanceof HTMLTextAreaElement) customThoughtSig.value = sig;
+                    saveSettingsDebounced();
+                    updateThoughtSignatureUi();
+                    setStatus('idle', `Generated ${label}; experimental, not provider-signed. Mode unchanged.`);
+                } catch (error) {
+                    setStatus('error', `Token generation failed: ${error.message}`);
+                }
+            });
+        }
 
         document.getElementById('sp_generate_protobuf_signature')?.addEventListener('click', () => {
             invalidateSignatureFetch();
@@ -2404,7 +2560,7 @@ function handleMessageReceivedForSignatureCache(messageId) {
         message.extra.sp_signature_provenance = { ...request.provenance };
         signatureRequests.delete(requestId);
     }
-    const harvested = extractRealSignatureRecordFromChat('', messageId ?? null);
+    const harvested = extractRealSignatureRecordFromChat('', messageId ?? null, '', isGptModel(message?.extra?.model));
     if (harvested) {
         cacheModelSignature(harvested.model, harvested.signature, harvested.source);
         updateThoughtSignatureUi();
@@ -2781,6 +2937,9 @@ initChain({
     buildPrefillToolDeclaration,
     registerPrefillTool,
     isGeminiModel,
+    isGptModel,
+    resolveGptThoughtSignature,
+    resolveGeminiThoughtSignature,
 });
 eventSource.on(eventTypes.MESSAGE_RECEIVED, handleMessageReceivedForSignatureCache);
 if (eventTypes.CHARACTER_MESSAGE_RENDERED) {
