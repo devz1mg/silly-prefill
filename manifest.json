@@ -1,0 +1,11 @@
+{
+    "display_name": "Silly Prefill",
+    "loading_order": 10000,
+    "js": "index.js",
+    "css": "style.css",
+    "author": "devz1mg",
+    "version": "1.6.2",
+    "homePage": "https://github.com/devz1mg/silly-prefill",
+    "auto_update": false,
+    "minimum_client_version": "1.19.0"
+}

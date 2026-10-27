@@ -1,0 +1,722 @@
+/* Silly Prefill settings. No chat styles or global theme variables are changed. */
+
+#sp_settings.sp-ui-settings {
+    --sp-border: rgba(255, 255, 255, 0.14);
+    --sp-border-strong: rgba(255, 255, 255, 0.30);
+    --sp-line: rgba(255, 255, 255, 0.22);
+    --sp-surface: rgba(255, 255, 255, 0.025);
+    --sp-field: rgba(0, 0, 0, 0.20);
+    --sp-hover: rgba(255, 255, 255, 0.065);
+    --sp-radius: 8px;
+    --sp-control-radius: 5px;
+    --sp-control-size: 32px;
+
+    width: 100%;
+    min-width: 0;
+    color: inherit;
+    font-family: inherit;
+    white-space: normal;
+}
+
+#sp_settings,
+#sp_settings * {
+    box-sizing: border-box;
+}
+
+#sp_settings .inline-drawer-content {
+    container-name: silly-prefill;
+    container-type: inline-size;
+    min-width: 0;
+    padding-bottom: 12px;
+}
+
+/* Native drawer visibility is not overridden. */
+
+#sp_settings .sp-ui-layout {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-width: 0;
+    padding-top: 8px;
+}
+
+#sp_settings .sp-ui-layout > * {
+    min-width: 0;
+    max-width: 100%;
+}
+
+#sp_settings small {
+    display: block;
+    margin: 0;
+    font-size: 0.8em;
+    line-height: 1.45;
+    opacity: 0.65;
+    overflow-wrap: anywhere;
+}
+
+#sp_settings label {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+/* Main switch and internal toggles */
+
+#sp_settings .sp-ui-toggle {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    width: 100%;
+    min-width: 0;
+    margin: 0;
+    cursor: pointer;
+}
+
+#sp_settings .sp-ui-toggle > input[type="checkbox"] {
+    box-sizing: border-box;
+    flex: 0 0 18px;
+    align-self: flex-start;
+    width: 18px;
+    min-width: 18px;
+    max-width: 18px;
+    height: 18px;
+    min-height: 18px;
+    max-height: 18px;
+    aspect-ratio: 1;
+    margin: 3px 0 0;
+    padding: 0;
+}
+
+#sp_settings .sp-ui-toggle > span {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+}
+
+#sp_settings .sp-ui-toggle strong {
+    font-size: 0.92em;
+}
+
+#sp_settings .sp-ui-layout > .sp-ui-toggle {
+    padding: 10px 12px;
+    border: 1px solid var(--sp-border);
+    border-radius: var(--sp-radius);
+    background: var(--sp-surface);
+}
+
+/* Response structure and status */
+
+#sp_settings .sp-ui-trace {
+    display: grid;
+    grid-template-columns: minmax(0, max-content) auto minmax(0, 1fr);
+    align-items: center;
+    gap: 8px 12px;
+    min-width: 0;
+    padding: 10px 12px;
+    border: 1px solid var(--sp-border);
+    border-radius: var(--sp-radius);
+    background: rgba(0, 0, 0, 0.16);
+    font-size: 0.85em;
+    line-height: 1.5;
+}
+
+#sp_settings .sp-ui-trace code {
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    color: inherit;
+    box-shadow: none;
+    font-family: inherit;
+    font-size: inherit;
+    font-weight: inherit;
+    white-space: normal;
+    opacity: 0.75;
+}
+
+#sp_settings .sp-ui-trace > i {
+    font-size: 0.85em;
+    opacity: 0.4;
+}
+
+#sp_settings .sp-ui-trace > span:not(.sp-ui-status) {
+    min-width: 0;
+    opacity: 0.65;
+}
+
+#sp_settings .sp-ui-status {
+    grid-column: 1 / -1;
+    justify-self: end;
+    min-width: 0;
+    max-width: 100%;
+    margin: 0;
+    font-size: 0.85em;
+    line-height: 1.45;
+    text-align: right;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    opacity: 0.65;
+}
+
+#sp_settings .sp-ui-status[data-kind="success"] {
+    opacity: 0.9;
+}
+
+#sp_settings small[data-kind="error"],
+#sp_settings .sp-ui-status[data-kind="error"] {
+    color: #dfa7a7;
+    opacity: 1;
+}
+
+/* Cards: body spacing is independent of details rendering. */
+
+#sp_settings .sp-ui-card {
+    display: block;
+    min-width: 0;
+    margin: 0;
+    padding: 12px;
+    border: 1px solid var(--sp-border);
+    border-left: 2px solid var(--sp-line);
+    border-radius: var(--sp-radius);
+    background: var(--sp-surface);
+}
+
+#sp_settings .sp-ui-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font-family: inherit;
+    font-size: 0.82em;
+    font-weight: 700;
+    line-height: 1.4;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    list-style: none;
+    cursor: pointer;
+}
+
+#sp_settings .sp-ui-title > span {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+#sp_settings .sp-ui-title > i {
+    flex: 0 0 auto;
+    font-size: 0.75em;
+    opacity: 0.5;
+    transition: transform 0.15s ease;
+}
+
+#sp_settings .sp-ui-title::-webkit-details-marker {
+    display: none;
+}
+
+#sp_settings .sp-ui-title::marker {
+    content: "";
+}
+
+#sp_settings .sp-ui-card[open] > .sp-ui-title {
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--sp-border);
+}
+
+#sp_settings .sp-ui-card[open] > .sp-ui-title > i {
+    transform: rotate(90deg);
+}
+
+#sp_settings .sp-ui-card-body {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    min-width: 0;
+    padding-top: 12px;
+}
+
+#sp_settings .sp-ui-card-body > * {
+    flex-shrink: 0;
+    min-width: 0;
+    max-width: 100%;
+    margin: 0;
+}
+
+#sp_settings .sp-ui-card:not([open]) > .sp-ui-card-body,
+#sp_settings [hidden] {
+    display: none !important;
+}
+
+/* Fields */
+
+#sp_settings .sp-ui-field {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: center;
+    gap: 7px;
+    min-width: 0;
+}
+
+#sp_settings .sp-ui-field > label,
+#sp_settings .sp-ui-text-heading > label {
+    min-width: 0;
+    margin: 0;
+    font-size: 1em;
+    font-weight: 600;
+    line-height: 1.45;
+    opacity: 1;
+}
+
+#sp_settings .sp-ui-field > small,
+#sp_settings .sp-ui-field > .sp-ui-footer,
+#sp_settings .sp-ui-field > .sp-ui-actions {
+    grid-column: 1 / -1;
+}
+
+#sp_settings .text_pole {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    min-height: var(--sp-control-size);
+    margin: 0;
+    padding: 6px 10px;
+    border: 1px solid var(--sp-border);
+    border-radius: var(--sp-control-radius);
+    background: var(--sp-field);
+    color: inherit;
+    box-shadow: none;
+    font-family: inherit;
+    font-size: 0.9em;
+    line-height: 1.4;
+}
+
+#sp_settings select.text_pole {
+    padding-right: 26px;
+    text-overflow: ellipsis;
+}
+
+#sp_settings textarea.text_pole {
+    min-height: 84px;
+    resize: vertical;
+    font-family: var(--monoFontFamily, monospace);
+    font-style: normal;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    tab-size: 4;
+}
+
+#sp_settings #sp_prefill {
+    min-height: 150px;
+}
+
+#sp_settings .text_pole::placeholder {
+    color: inherit;
+    opacity: 0.4;
+}
+
+#sp_settings .text_pole:focus {
+    border-color: var(--sp-border-strong);
+}
+
+/* Headings and counters */
+
+#sp_settings .sp-ui-text-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    min-width: 0;
+}
+
+#sp_settings .sp-ui-footer {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    min-width: 0;
+}
+
+#sp_settings .sp-ui-footer > span {
+    min-width: 0;
+    font-size: 0.75em;
+    opacity: 0.55;
+}
+
+/* Buttons keep whole labels, never one letter per line. */
+
+#sp_settings .menu_button {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    width: auto;
+    min-width: max-content;
+    max-width: 100%;
+    height: auto;
+    min-height: var(--sp-control-size);
+    margin: 0;
+    padding: 6px 10px;
+    border: 1px solid var(--sp-border);
+    border-radius: var(--sp-control-radius);
+    background: rgba(255, 255, 255, 0.035);
+    color: inherit;
+    box-shadow: none;
+    font-family: inherit;
+    font-size: 0.85em;
+    line-height: 1.35;
+    text-align: center;
+    white-space: nowrap;
+    overflow-wrap: normal;
+    word-break: normal;
+    writing-mode: horizontal-tb;
+    cursor: pointer;
+}
+
+#sp_settings .menu_button > i {
+    flex: 0 0 auto;
+    opacity: 0.7;
+}
+
+#sp_settings .sp-ui-icon {
+    flex: 0 0 var(--sp-control-size);
+    width: var(--sp-control-size);
+    min-width: var(--sp-control-size);
+    height: var(--sp-control-size);
+    padding: 0;
+    border-color: transparent;
+    background: transparent;
+}
+
+#sp_settings .sp-ui-actions {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    min-width: 0;
+}
+
+#sp_settings :is(.text_pole, .menu_button, input[type="checkbox"]):disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+#sp_settings .menu_button:disabled {
+    pointer-events: none;
+}
+
+#sp_settings :is(.menu_button, .text_pole, .sp-ui-title):focus-visible {
+    outline: 1px solid var(--sp-border-strong);
+    outline-offset: 2px;
+}
+
+@container silly-prefill (min-width: 480px) {
+    #sp_settings .sp-ui-field-short {
+        grid-template-columns: minmax(130px, 34%) minmax(0, 1fr);
+        column-gap: 12px;
+    }
+}
+
+@media (hover: hover) {
+    #sp_settings .menu_button:hover {
+        border-color: var(--sp-border-strong);
+        background: var(--sp-hover);
+    }
+
+    #sp_settings .sp-ui-title:hover {
+        opacity: 0.85;
+    }
+}
+
+@media (pointer: coarse) {
+    #sp_settings.sp-ui-settings {
+        --sp-control-size: 44px;
+    }
+
+    #sp_settings .sp-ui-title {
+        min-height: 44px;
+    }
+
+    #sp_settings textarea.text_pole {
+        font-size: 16px;
+    }
+}
+
+/* Expanded editor: isolated from settings and other extensions. */
+
+dialog.silly-prefill-editor,
+dialog.silly-prefill-editor * {
+    box-sizing: border-box;
+}
+
+dialog.silly-prefill-editor {
+    --sp-vw: 100vw;
+    --sp-vh: 100vh;
+    --sp-vx: 0px;
+    --sp-vy: 0px;
+
+    position: fixed;
+    inset: auto;
+    left: calc(var(--sp-vx) + var(--sp-vw) / 2);
+    top: calc(var(--sp-vy) + var(--sp-vh) / 2);
+    transform: translate(-50%, -50%);
+    width: 1100px;
+    height: calc(var(--sp-vh) - 48px);
+    max-width: calc(var(--sp-vw) - 24px);
+    max-height: calc(var(--sp-vh) - 24px);
+    min-width: 0;
+    min-height: 0;
+    margin: 0;
+    padding: 18px;
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    border-radius: 8px;
+    background:
+        linear-gradient(
+            var(--SmartThemeBlurTintColor, rgba(18, 18, 20, 0.96)),
+            var(--SmartThemeBlurTintColor, rgba(18, 18, 20, 0.96))
+        ),
+        #121214;
+    color: var(--SmartThemeBodyColor, rgba(255, 255, 255, 0.85));
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55);
+    font-family: inherit;
+    font-size: inherit;
+    text-shadow: none;
+    overscroll-behavior: contain;
+}
+
+dialog.silly-prefill-editor:not([open]),
+dialog.silly-prefill-editor [hidden] {
+    display: none !important;
+}
+
+dialog.silly-prefill-editor::backdrop {
+    background: rgba(0, 0, 0, 0.6);
+}
+
+.silly-prefill-editor .sp-dialog-content {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    min-height: 0;
+}
+
+.silly-prefill-editor .sp-dialog-heading {
+    flex: 0 0 auto;
+    min-width: 0;
+    max-height: 20%;
+    margin: 0;
+    padding: 0 0 10px;
+    overflow: auto;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+    font-family: inherit;
+    font-size: 0.95em;
+    font-weight: 600;
+    line-height: 1.5;
+    text-align: left;
+    overflow-wrap: anywhere;
+}
+
+.silly-prefill-editor textarea.sp-dialog-text {
+    display: block;
+    flex: 1 1 0;
+    width: 100%;
+    height: 0;
+    min-width: 0;
+    min-height: 0;
+    max-width: 100%;
+    max-height: none;
+    margin: 0;
+    padding: 12px;
+    overflow: auto;
+    resize: none;
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    border-radius: 5px;
+    background: rgba(0, 0, 0, 0.2);
+    color: inherit;
+    box-shadow: none;
+    font-family: var(--monoFontFamily, monospace);
+    font-size: 0.92em;
+    font-style: normal;
+    font-weight: 400;
+    line-height: 1.55;
+    text-align: left;
+    text-indent: 0;
+    text-shadow: none;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    tab-size: 4;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+}
+
+.silly-prefill-editor .sp-dialog-buttons {
+    display: flex;
+    flex: 0 0 auto;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;
+    min-width: 0;
+}
+
+.silly-prefill-editor button {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    width: auto;
+    min-width: 76px;
+    min-height: 38px;
+    margin: 0;
+    padding: 8px 12px;
+    border: 1px solid rgba(255, 255, 255, 0.24);
+    border-radius: 5px;
+    background: rgba(255, 255, 255, 0.025);
+    color: inherit;
+    box-shadow: none;
+    font-family: inherit;
+    font-size: 0.85em;
+    line-height: 1.35;
+    white-space: nowrap;
+    overflow-wrap: normal;
+    word-break: normal;
+    cursor: pointer;
+}
+
+.silly-prefill-editor [data-sp-editor="save"] {
+    border-color: rgba(255, 255, 255, 0.4);
+}
+
+.silly-prefill-editor .sp-dialog-discard {
+    display: flex;
+    flex: 0 0 auto;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding-top: 10px;
+    border-top: 1px solid rgba(255, 255, 255, 0.15);
+    font-size: 0.9em;
+}
+
+.silly-prefill-editor .sp-dialog-discard > span {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.silly-prefill-editor .sp-dialog-notice {
+    flex: 0 0 auto;
+    max-height: 25%;
+    padding: 8px 10px;
+    overflow: auto;
+    border: 1px solid rgba(220, 155, 135, 0.45);
+    border-radius: 5px;
+    font-size: 0.85em;
+    line-height: 1.4;
+    overflow-wrap: anywhere;
+}
+
+.silly-prefill-editor :is(button, textarea):focus-visible {
+    outline: 1px solid rgba(255, 255, 255, 0.6);
+    outline-offset: 2px;
+}
+
+@media (hover: hover) {
+    .silly-prefill-editor button:hover {
+        border-color: rgba(255, 255, 255, 0.5);
+        background: rgba(255, 255, 255, 0.07);
+    }
+}
+
+@media (max-width: 700px), (pointer: coarse) {
+    dialog.silly-prefill-editor {
+        width: calc(var(--sp-vw) - 12px);
+        max-width: min(1100px, calc(var(--sp-vw) - 12px));
+        height: calc(var(--sp-vh) - 12px);
+        max-height: calc(var(--sp-vh) - 12px);
+        padding: 10px;
+    }
+
+    .silly-prefill-editor .sp-dialog-content {
+        gap: 8px;
+    }
+
+    .silly-prefill-editor textarea.sp-dialog-text {
+        padding: 10px;
+        font-size: 16px;
+    }
+
+    .silly-prefill-editor button {
+        min-height: 44px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #sp_settings .sp-ui-title > i {
+        transition: none;
+    }
+}
+/* External blocks (chain) */
+
+#sp_settings .sp-chain-root,
+#sp_settings .sp-chain-editor,
+#sp_settings .sp-chain-prompts {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-width: 0;
+}
+
+#sp_settings .sp-chain-editor {
+    padding: 10px;
+    border: 1px solid var(--sp-border);
+    border-radius: var(--sp-radius);
+    background: rgba(0, 0, 0, 0.12);
+}
+
+#sp_settings .sp-chain-prompt {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 8px;
+    border-left: 2px solid var(--sp-line);
+}
+
+#sp_settings .sp-chain-prompt .sp-ui-actions > select.text_pole {
+    width: auto;
+    flex: 1 1 120px;
+}
+
+#sp_settings .sp-chain-prompt .sp-ui-actions > input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    margin: 0;
+}
+
+#sp_settings select[size].text_pole {
+    min-height: 80px;
+}
+
+#sp_settings .sp-chain-help ul {
+    margin: 6px 0;
+    padding-left: 18px;
+    font-size: 0.85em;
+}
+
+#sp_settings .sp-chain-help code {
+    font-size: 0.95em;
+}
